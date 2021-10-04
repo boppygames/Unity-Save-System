@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using SaveSystem;
 using UnityEditor.EventSystems;
 using UnityEngine;
 using UnityEngine.Assertions;
@@ -15,15 +16,16 @@ public class EntityReader
   Dictionary<string, object> objects;
 
   readonly Dictionary<Type, Func<object, object>> reboxers = new Dictionary<Type, Func<object, object>>();
+  readonly List<string> readProperties = new List<string>();
 
   public EntityReader(BinaryReader reader)
   {
     this.reader = reader;
 
     reboxers.Add(typeof(bool), a => a);
-    reboxers.Add(typeof(char), a => ((string)a)[0]);
+    reboxers.Add(typeof(char), a => ((string) a)[0]);
     reboxers.Add(typeof(byte), a => (byte) (long) a);
-    reboxers.Add(typeof(sbyte), a => (sbyte)(long) a);
+    reboxers.Add(typeof(sbyte), a => (sbyte) (long) a);
     reboxers.Add(typeof(short), a => (short) (long) a);
     reboxers.Add(typeof(ushort), a => (ushort) (long) a);
     reboxers.Add(typeof(uint), a => (uint) (long) a);
@@ -34,26 +36,32 @@ public class EntityReader
     reboxers.Add(typeof(double), a => a);
   }
 
-  internal object Read(FieldInfo typeInfo) => Read(typeInfo.FieldType, typeInfo.Name);
+  public string[] GetUnreadProperties() => objects.Keys.Except(readProperties).ToArray();
+
+  internal object Read(Component comp, int index, FieldInfo typeInfo)
+  {
+    return Read(typeInfo.FieldType, $"{comp.GetType().Name}.{index}.{typeInfo.Name}");
+  }
 
   object Read(Type type, string key)
   {
+    readProperties.Add(key);
     if (SaveUtil.IsReferenceType(type))
     {
       if (!objects.TryGetValue(key, out var refValue)) return null;
-      if (string.IsNullOrEmpty((string)refValue)) return null;
-      var componentIndex = (int)(long) objects[$"{key}.compIndex"];
-      return EntitySaveManager.instance.GetReference((string)refValue, type, componentIndex);
-    } 
-    
+      if (string.IsNullOrEmpty((string) refValue)) return null;
+      var componentIndex = (int) (long) objects[$"{key}.compIndex"];
+      return EntitySaveManager.instance.GetReference((string) refValue, type, componentIndex);
+    }
+
     if (type == typeof(GameObject))
     {
       if (!objects.TryGetValue(key, out var refValue)) return null;
-      if (string.IsNullOrEmpty((string)refValue)) return null;
-      return EntitySaveManager.instance.GetGOReference((string)refValue);
+      if (string.IsNullOrEmpty((string) refValue)) return null;
+      return EntitySaveManager.instance.GetGOReference((string) refValue);
     }
 
-    if(type.IsArray)
+    if (type.IsArray)
       return ReadArray(type, key);
     if (SaveUtil.IsIDictionaryType(type))
       return ReadDictionary(type, key);
@@ -62,20 +70,20 @@ public class EntityReader
     if (type.IsEnum)
     {
       if (!objects.TryGetValue(key, out var value)) return null;
-      return Enum.ToObject(type, (long)value);
+      return Enum.ToObject(type, (long) value);
     }
-    
+
     if (SaveUtil.IsPrimitive(type))
     {
       // Hopefully this is a primitive
       if (!objects.TryGetValue(key, out var value)) return null;
       if (reboxers.TryGetValue(type, out var reboxer)) value = reboxer(value);
-      return value;  
+      return value;
     }
-    
+
     return ReadNonPrimitive(type, key);
   }
-  
+
   /// <summary>
   /// Reads a non-primitive data type
   /// </summary>
@@ -99,8 +107,8 @@ public class EntityReader
   /// <returns></returns>
   object ReadArray(Type arrayType, string key)
   {
-    if (!objects.TryGetValue($"{key}.Length", out var lengthValue)) return null;
-    var arrayLength = (int) (long) lengthValue;
+    if (!objects.ContainsKey($"{key}.Length")) return null;
+    var arrayLength = (int) Read(typeof(int), $"{key}.Length");
     var elementType = arrayType.GetElementType();
     Assert.IsTrue(arrayType.HasElementType && elementType != null);
     var arr = Array.CreateInstance(elementType, arrayLength);
@@ -108,7 +116,7 @@ public class EntityReader
       arr.SetValue(Read(elementType, $"{key}.{x}"), x);
     return arr;
   }
-  
+
   /// <summary>
   /// Reads a list object
   /// </summary>
@@ -117,10 +125,8 @@ public class EntityReader
   /// <returns></returns>
   object ReadList(Type listType, string key)
   {
-    if (!objects.TryGetValue($"{key}.Count", out var countValue))
-      return null;
-    
-    var count = (int) (long) countValue;
+    if (!objects.ContainsKey($"{key}.Count")) return null;
+    var count = (int) Read(typeof(int), $"{key}.Count");
     var elementType = SaveUtil.GetIListType(listType);
     var list = Activator.CreateInstance(listType);
     // We have to lookup the Add method
@@ -129,7 +135,7 @@ public class EntityReader
                   && m.GetParameters().Length == 1
                   && m.GetParameters()[0].ParameterType == elementType);
 
-    
+
     for (var x = 0; x < count; x++)
     {
       var entry = Read(elementType, $"{key}.{x}");
@@ -138,9 +144,11 @@ public class EntityReader
 
     return list;
   }
-  
+
   object ReadDictionary(Type fieldType, string key)
   {
+    if (!objects.ContainsKey($"{key}.Count")) return null;
+
     var dictionaryTypes = SaveUtil.GetIDictionaryTypes(fieldType);
     var keyType = dictionaryTypes[0];
     var valueType = dictionaryTypes[1];
@@ -148,23 +156,25 @@ public class EntityReader
     var dictionary = Activator.CreateInstance(fieldType);
     // We have to lookup the Add method
     var addMethod = dictionary.GetType().GetMethods()
-      .First(m => m.Name == "Add" 
-                  && m.GetParameters().Length == 2 
+      .First(m => m.Name == "Add"
+                  && m.GetParameters().Length == 2
                   && m.GetParameters()[0].ParameterType == keyType
                   && m.GetParameters()[1].ParameterType == valueType);
 
-    var count = (int)(long)objects[$"{key}.Count"];
+    var count = (int) Read(typeof(int), $"{key}.Count");
     for (var x = 0; x < count; x++)
     {
       var keyResult = Read(keyType, $"{key}.Keys.{x}");
       var valueResult = Read(valueType, $"{key}.Values.{x}");
       addMethod.Invoke(dictionary, new[] {keyResult, valueResult});
     }
+
     return dictionary;
   }
 
-  public void ReadAll()
+  public bool ReadAll()
   {
     objects = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>(reader.ReadString());
+    return objects != null;
   }
 }

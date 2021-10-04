@@ -1,42 +1,48 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using SaveSystem;
 using UnityEditor.VersionControl;
 using UnityEngine;
 using UnityEngine.Assertions;
 
 public class Test : MonoBehaviour
 {
+  [Serializable]
   class MyData
   {
     public string s;
     public int a;
   }
 
+  class MyCustomStruct
+  {
+    public string myS;
+    public int myI;
+  }
+
   [SerializeField] [Save] List<MyData> data;
+  [Save] int i;
+  [Save] string s;
+
+  void Start()
+  {
+    // EntitySaveManager.instance.AddCustomSerializer(typeof(MyCustomStruct),
+    //   (writer, obj) =>
+    //   {
+    //     var data = obj as MyCustomStruct;
+    //     writer
+    //   }, reader =>
+    //   {
+    //     
+    //     
+    //     return null;
+    //   });
+  }
 
   [ContextMenu("Save")]
   public void Save()
   {
-    data = new List<MyData>();
-    data.Add(new MyData
-    {
-      s = "My string 1",
-      a = 849375,
-    });
-    
-    data.Add(new MyData
-    {
-      s = "My string 2",
-      a = 3453,
-    });
-    
-    data.Add(new MyData
-    {
-      s = "My string 3",
-      a = 87972,
-    });
-    
     EntitySaveManager.instance.SaveAllEntities("TestFile.dat");
   }
   

@@ -5,94 +5,98 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 
-[CreateAssetMenu(menuName = "Save List")]
-public class AssetSaveList : ScriptableObject
+namespace SaveSystem
 {
-  [Serializable]
-  struct Entry
+  public class AssetSaveList : ScriptableObject
   {
-    public string assetId;
-    public GameObject asset;
-  }
+    [Serializable]
+    struct Entry
+    {
+      public string assetId;
+      public GameObject asset;
+    }
 
-  [SerializeField] [HideInInspector] List<Entry> entries;
+    [SerializeField] [HideInInspector] List<Entry> entries;
 
-  public GameObject GetAsset(string assetId)
-  {
-    foreach (var entry in entries)
-      if (entry.assetId == assetId)
-        return entry.asset;
-    return null;
-  }
+    public GameObject GetAsset(string assetId)
+    {
+      foreach (var entry in entries)
+        if (entry.assetId == assetId)
+          return entry.asset;
+      return null;
+    }
 
-  public string GetAssetId(GameObject asset)
-  {
-    foreach (var entry in entries)
-      if (entry.asset == asset)
-        return entry.assetId;
-    return null;
-  }
+    public string GetAssetId(GameObject asset)
+    {
+      foreach (var entry in entries)
+        if (entry.asset == asset)
+          return entry.assetId;
+      return null;
+    }
 
 #if UNITY_EDITOR
 
-  [CustomEditor(typeof(AssetSaveList))]
-  public class AssetSaveListEditor : Editor
-  {
-    GameObject selectedAsset;
-    
-    public override void OnInspectorGUI()
+    [CustomEditor(typeof(AssetSaveList))]
+    public class AssetSaveListEditor : Editor
     {
-      base.OnInspectorGUI();
+      GameObject selectedAsset;
 
-      var list = (AssetSaveList) target;
-      if (list.entries == null) return;
-
-      for (var x = 0; x < list.entries.Count; x++)
+      public override void OnInspectorGUI()
       {
-        var entry = list.entries[x];
-        GUILayout.BeginHorizontal();
+        base.OnInspectorGUI();
 
-        if (GUILayout.Button("X"))
+        var list = (AssetSaveList) target;
+        if (list.entries == null) return;
+
+        for (var x = 0; x < list.entries.Count; x++)
         {
-          list.entries.RemoveAt(x);
+          var entry = list.entries[x];
+          GUILayout.BeginHorizontal();
+
+          if (GUILayout.Button("X"))
+          {
+            list.entries.RemoveAt(x);
+            EditorUtility.SetDirty(list);
+            return;
+          }
+
+          GUILayout.Label(entry.assetId);
+          GUILayout.Label(entry.asset.name);
+
+          GUILayout.EndHorizontal();
+        }
+
+        selectedAsset = EditorGUILayout.ObjectField("New Asset: ", selectedAsset,
+          typeof(GameObject), false) as GameObject;
+
+        var entity = selectedAsset != null ? selectedAsset.GetComponent<EntitySaveController>() : null;
+
+        if (list.GetAssetId(selectedAsset) != null)
+        {
+          GUILayout.Label("Warning: Asset already registered.");
+        }
+        else if (entity == null)
+        {
+          GUILayout.Label("Warning: Asset has no EntitySaveController.");
+        }
+        else if (GUILayout.Button("Add Asset"))
+        {
+          var entry = new Entry
+          {
+            asset = selectedAsset,
+            assetId = Guid.NewGuid().ToString()
+          };
+
+          entity.EditorSetAssetId(entry.assetId);
+          list.entries.Add(entry);
+          selectedAsset = null;
           EditorUtility.SetDirty(list);
+          EditorUtility.SetDirty(entity);
           return;
         }
-        
-        GUILayout.Label(entry.assetId);
-        GUILayout.Label(entry.asset.name);
-        
-        GUILayout.EndHorizontal();
-      }
-
-      selectedAsset = EditorGUILayout.ObjectField("New Asset: ", selectedAsset, 
-        typeof(GameObject), false) as GameObject;
-      
-      var entity = selectedAsset != null ? selectedAsset.GetComponent<EntitySaveController>() : null;
-
-      if (list.GetAssetId(selectedAsset) != null)
-      {
-        GUILayout.Label("Warning: Asset already registered.");
-      } else if(entity == null)
-      {
-        GUILayout.Label("Warning: Asset has no EntitySaveController.");
-      } else if (GUILayout.Button("Add Asset"))
-      {
-        var entry = new Entry
-        {
-          asset = selectedAsset,
-          assetId = Guid.NewGuid().ToString()
-        };
-        
-        entity.EditorSetAssetId(entry.assetId);
-        list.entries.Add(entry);
-        selectedAsset = null;
-        EditorUtility.SetDirty(list);
-        EditorUtility.SetDirty(entity);
-        return;
       }
     }
-  }
-  
+
 #endif
+  }
 }

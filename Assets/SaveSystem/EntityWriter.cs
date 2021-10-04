@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using Newtonsoft.Json;
+using SaveSystem;
 using UnityEngine;
 
 public class EntityWriter
@@ -19,7 +20,10 @@ public class EntityWriter
     this.writer = writer;
   }
 
-  public void AddValue(FieldInfo fieldInfo, object value) => AddValue(fieldInfo.FieldType, fieldInfo.Name, value);
+  public void AddValue(Component comp, int index, FieldInfo fieldInfo, object value)
+  {
+    AddValue(fieldInfo.FieldType, $"{comp.GetType().Name}.{index}.{fieldInfo.Name}", value);
+  }
 
   void AddValue(Type type, string key, object value)
   {

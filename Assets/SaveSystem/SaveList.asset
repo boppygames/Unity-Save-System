@@ -13,5 +13,7 @@ MonoBehaviour:
   m_Name: SaveList
   m_EditorClassIdentifier: 
   entries:
-  - assetId: 37008432-0d18-4a73-b74d-bf6719060c09
+  - assetId: 3c7e6393-9be3-4826-8c23-9fc61e5f4405
     asset: {fileID: 8007870535472733876, guid: d26ed3d3e5750c158be567cfa4b8af97, type: 3}
+  - assetId: 18e5e485-f5c4-4f7c-bf17-6fcab1134bcd
+    asset: {fileID: 8007870535472733876, guid: b9a2818b5a59691b3877de974e32832e, type: 3}
