@@ -6,7 +6,7 @@ using System.Reflection;
 using Unity.Mathematics;
 using UnityEngine;
 
-namespace SaveSystem
+namespace EntitySaveSystem
 {
   public static class SaveUtil
   {
@@ -53,7 +53,7 @@ namespace SaveSystem
         a => a.IsPublic || a.CustomAttributes.Any(b => b.AttributeType == typeof(SaveAttribute)));
     }
 
-    public static bool IsReferenceType(Type type)
+    public static bool IsComponentType(Type type)
     {
       while (type != typeof(object) && type != null)
       {
@@ -65,9 +65,9 @@ namespace SaveSystem
       return false;
     }
 
-    public static int GetComponentIndex(EntitySaveController entity, Type componentType, object component)
+    public static int GetComponentIndex(SaveEntity saveEntity, Type componentType, object component)
     {
-      var components = entity.GetComponents(componentType);
+      var components = saveEntity.GetComponents(componentType);
       for (var x = 0; x < components.Length; x++)
         if (ReferenceEquals(components[x], component))
           return x;

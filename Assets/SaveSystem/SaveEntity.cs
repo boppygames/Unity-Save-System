@@ -12,7 +12,7 @@ using UnityEditor;
 using UnityEditor.VersionControl;
 using UnityEngine;
 
-namespace SaveSystem
+namespace EntitySaveSystem
 {
   public interface ISavePropertyMissing
   {
@@ -33,7 +33,7 @@ namespace SaveSystem
     /// </summary>
     void OnEntityLoadComplete();
   }
-  
+
   public interface ILoadComplete
   {
     /// <summary>
@@ -41,8 +41,8 @@ namespace SaveSystem
     /// </summary>
     void OnAllEntitiesLoaded();
   }
-  
-  public interface IBeforeSave
+
+  public interface IBeforeEntitySave
   {
     /// <summary>
     /// This callback is invoked just before this entity is saved to disk.
@@ -51,7 +51,7 @@ namespace SaveSystem
   }
 
   [DisallowMultipleComponent]
-  public class EntitySaveController : MonoBehaviour
+  public class SaveEntity : MonoBehaviour
   {
     // This is a uuid that uniquely identifies this entity
     [Save] string entityId;
@@ -63,14 +63,14 @@ namespace SaveSystem
     void Start()
     {
       // Assign a new entityId, this may get overwritten later by Load()
-      if (EntitySaveManager.instance == null) return;
+      if (SaveSystem.instance == null) return;
       entityId = Guid.NewGuid().ToString();
-      EntitySaveManager.instance.Register(this);
+      SaveSystem.instance.Register(this);
     }
 
     void OnDestroy()
     {
-      EntitySaveManager.instance.Unregister(this);
+      SaveSystem.instance.Unregister(this);
     }
 
 #if UNITY_EDITOR
@@ -83,13 +83,12 @@ namespace SaveSystem
 
     internal string GetAssetName() => serializedName;
 
-    internal void Save(BinaryWriter writer)
+    internal void Save(EntityWriter writer)
     {
-      var beforeSave = GetComponents<IBeforeSave>();
-      foreach(var invoke in beforeSave)
+      var beforeSave = GetComponents<IBeforeEntitySave>();
+      foreach (var invoke in beforeSave)
         invoke?.OnBeforeSave();
-      
-      var entityWriter = new EntityWriter(writer);
+
       foreach (var behaviour in GetComponents<MonoBehaviour>())
       {
         var index = SaveUtil.GetComponentIndex(this, behaviour.GetType(), behaviour);
@@ -98,23 +97,14 @@ namespace SaveSystem
 #if SAVE_DEBUG
           Debug.Log($"Saving field: {behaviour.GetType()}:{saveField.Name}");
 #endif
-          entityWriter.AddValue(behaviour, index, saveField, saveField.GetValue(behaviour));
+          if (!writer.AddValue(behaviour, index, saveField, saveField.GetValue(behaviour)))
+            Debug.LogError($"A field has failed to be written: {behaviour.GetType()} => {saveField.Name}");
         }
       }
-
-      // Write the results to the memory buffer
-      entityWriter.WriteAll();
     }
 
-    internal void Load(BinaryReader reader)
+    internal void Load(EntityReader reader)
     {
-      var entityReader = new EntityReader(reader);
-      if (!entityReader.ReadAll())
-      {
-        Debug.LogError("Failed to load properties from save file!");
-        return;
-      }
-
       // Load values for each of our scripts
       foreach (var behaviour in GetComponents<MonoBehaviour>())
       {
@@ -124,17 +114,16 @@ namespace SaveSystem
 #if SAVE_DEBUG
           Debug.Log($"Loading field: {behaviour.GetType()}:{loadField.Name}");
 #endif
-          loadField.SetValue(behaviour, entityReader.Read(behaviour, index, loadField));
+          loadField.SetValue(behaviour, reader.Read(behaviour, index, loadField, loadField.GetValue(behaviour)));
         }
       }
 
       // Process any unread properties - these are properties that exist in the save file but were not loaded. This
       // specifically can be an issue with backwards compatibility, so we want to be able to address it.
-      var unread = entityReader.GetUnreadProperties();
+      var unread = reader.GetUnreadProperties();
       foreach (var behaviour in GetComponents<MonoBehaviour>())
       {
         var missingInterface = behaviour.GetComponent<ISavePropertyMissing>();
-
         var index = SaveUtil.GetComponentIndex(this, behaviour.GetType(), behaviour);
         foreach (var unreadProperty in unread)
         {
@@ -148,13 +137,13 @@ namespace SaveSystem
 #endif
 
           if (behaviour.GetType().Name != typeNameString || index != unreadIndex) continue;
-          missingInterface?.OnMissingProperty(split[2], entityReader);
+          missingInterface?.OnMissingProperty(split[2], reader);
         }
       }
-      
+
       // Invoke the callback for after load complete
       var afterLoad = GetComponents<IEntityLoadComplete>();
-      foreach(var invoke in afterLoad)
+      foreach (var invoke in afterLoad)
         invoke?.OnEntityLoadComplete();
     }
 
@@ -164,7 +153,7 @@ namespace SaveSystem
     public void AllEntitiesLoaded()
     {
       var afterLoad = GetComponents<ILoadComplete>();
-      foreach(var invoke in afterLoad)
+      foreach (var invoke in afterLoad)
         invoke?.OnAllEntitiesLoaded();
     }
 
@@ -238,14 +227,14 @@ namespace SaveSystem
       ValidateAssetID();
     }
 
-    [CustomEditor(typeof(EntitySaveController))]
+    [CustomEditor(typeof(SaveEntity))]
     public class CustomSaveEditor : Editor
     {
       public override void OnInspectorGUI()
       {
         base.OnInspectorGUI();
 
-        var save = (EntitySaveController) target;
+        var save = (SaveEntity) target;
         if (save.ValidateAssetID())
           EditorUtility.SetDirty(save);
         if (!string.IsNullOrEmpty(save.assetId))

@@ -1,12 +1,12 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using SaveSystem;
+using EntitySaveSystem;
 using UnityEditor.VersionControl;
 using UnityEngine;
 using UnityEngine.Assertions;
 
-public class Test : MonoBehaviour
+public class Test : MonoBehaviour, IEntityLoadComplete, IBeforeEntitySave
 {
   [Serializable]
   class MyData
@@ -21,34 +21,30 @@ public class Test : MonoBehaviour
     public int myI;
   }
 
+  [Save] Test otherTest;
   [SerializeField] [Save] List<MyData> data;
   [Save] int i;
   [Save] string s;
 
-  void Start()
-  {
-    // EntitySaveManager.instance.AddCustomSerializer(typeof(MyCustomStruct),
-    //   (writer, obj) =>
-    //   {
-    //     var data = obj as MyCustomStruct;
-    //     writer
-    //   }, reader =>
-    //   {
-    //     
-    //     
-    //     return null;
-    //   });
-  }
-
   [ContextMenu("Save")]
   public void Save()
   {
-    EntitySaveManager.instance.SaveAllEntities("TestFile.dat");
+    SaveSystem.instance.SaveAllEntities("TestFile.dat");
   }
   
   [ContextMenu("Load")]
   public void Load()
   {
-    EntitySaveManager.instance.LoadAllEntities("TestFile.dat");
+    SaveSystem.instance.LoadAllEntities("TestFile.dat");
+  }
+
+  public void OnEntityLoadComplete()
+  {
+    
+  }
+
+  public void OnBeforeSave()
+  {
+    
   }
 }

@@ -2,123 +2,192 @@ using System;
 using System.CodeDom;
 using System.Collections;
 using System.Collections.Generic;
+using System.Data.Common;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using Newtonsoft.Json;
-using SaveSystem;
 using UnityEngine;
 
-public class EntityWriter
+namespace EntitySaveSystem
 {
-  readonly BinaryWriter writer;
-
-  readonly Dictionary<string, object> objects = new Dictionary<string, object>();
-
-  public EntityWriter(BinaryWriter writer)
+  public class EntityWriter
   {
-    this.writer = writer;
-  }
-
-  public void AddValue(Component comp, int index, FieldInfo fieldInfo, object value)
-  {
-    AddValue(fieldInfo.FieldType, $"{comp.GetType().Name}.{index}.{fieldInfo.Name}", value);
-  }
-
-  void AddValue(Type type, string key, object value)
-  {
-    if (value == null) return;
-    if (key == null)
-      throw new Exception("Key cannot be null");
-
-    if (value is GameObject go)
+    /// <summary>
+    /// Adapters are useful for custom serialization callbacks. We don't want to give users direct access to the
+    /// EntityWriter because users are idiots and will add values with the wrong keys and mess up the entire system.
+    /// </summary>
+    public class Adapter
     {
-      var entity = go.GetComponent<EntitySaveController>();
-      var refId = entity.GetEntityId();
-      objects[key] = refId;
-    }
-    else if (value is Component comp)
-    {
-      var entity = comp.GetComponent<EntitySaveController>();
-      var refId = entity.GetEntityId();
-      objects[key] = refId;
-      objects[$"{key}.compIndex"] = SaveUtil.GetComponentIndex(entity, type, value);
-    }
-    else if (type.IsArray)
-      AddArray(key, value);
-    else if (SaveUtil.IsIListType(type))
-      WriteList(type, key, value);
-    else if (SaveUtil.IsIDictionaryType(type))
-      WriteDictionary(key, value);
-    else if(SaveUtil.IsPrimitive(type))
-      objects[key] = value;
-    else WriteNonPrimitive(key, value);
-  }
-  
-  void WriteNonPrimitive(string key, object value)
-  {
-    if (value == null) return;
-    var type = value.GetType();
-    foreach (var field in SaveUtil.GetFields(type))
-      AddValue(field.FieldType, $"{key}.{field.Name}", field.GetValue(value));
-  }
+      readonly EntityWriter writer;
+      readonly string baseKey;
 
-  void AddArray(string key, object value)
-  {
-    var array = (Array) value;
-    var elementType = array.GetType().GetElementType();
-    for (var index = 0; index < array.Length; index++)
-      AddValue(elementType, $"{key}.{index}", array.GetValue(index));
-    objects[$"{key}.Length"] = array.Length;
-  }
+      public Adapter(EntityWriter writer, string baseKey)
+      {
+        this.writer = writer;
+        this.baseKey = baseKey;
+      }
 
-  void WriteList(Type listType, string key, object value)
-  {
-    if (value == null) return;
-    var getMethod = listType.GetMethod("get_Item");
-    if (getMethod == null)
-    {
-      Debug.LogError($"Get method not found for list: given: {value.GetType()} expected: {listType}");
-      return;
+      /// <summary>
+      /// Adds a value with the given name, type and value. This value may be null, however name and type must
+      /// be set. Type must be either a parent type or the exact type of value (in the case where value is set).
+      /// </summary>
+      /// <param name="name">The name of this value. This would be the name of a field in a class/struct.</param>
+      /// <param name="type">The type this value should be serialized as. This doesn't have to be the same as the expected type.</param>
+      /// <param name="value">The value you want to write.</param>
+      /// <exception cref="ArgumentException"></exception>
+      public void AddValue(string name, Type type, object value)
+      {
+        if (string.IsNullOrEmpty(name))
+          throw new ArgumentException("name must be set.");
+        writer.AddValue(type, $"{baseKey}.{name}", value);
+      }
     }
 
-    var countProperty = listType.GetProperty("Count");
-    if (countProperty == null)
+    // The writer that should be used to write to the underlying stream. This is typically a memory stream.
+    readonly BinaryWriter writer;
+
+    // The list of objects that have non-null values
+    readonly Dictionary<string, object> objects = new Dictionary<string, object>();
+
+    // The list of keys that contain null values
+    readonly HashSet<string> nullKeys = new HashSet<string>();
+
+    readonly Dictionary<Type, Func<Adapter, object, bool>> customSerializers;
+
+    public EntityWriter(BinaryWriter writer, Dictionary<Type, Func<Adapter, object, bool>> customSerializers)
     {
-      Debug.LogError($"Count property not found for list: given: {value.GetType()} expected: {listType}");
-      return;
+      this.writer = writer;
+      this.customSerializers = customSerializers;
     }
 
-    var elementType = SaveUtil.GetIListType(listType);
-    var count = (int) countProperty.GetMethod.Invoke(value, new object[] { });
+    public Adapter GetAdapter(string key) => new Adapter(this, key);
 
-    for (var index = 0; index < count; index++)
-      AddValue(elementType, $"{key}.{index}", getMethod.Invoke(value, new object[] {index}));
-    AddValue(typeof(int), $"{key}.Count", count);
-  }
+    public bool AddValue(Component comp, int index, FieldInfo fieldInfo, object value) =>
+      AddValue(fieldInfo.FieldType, $"{comp.GetType().Name}.{index}.{fieldInfo.Name}", value);
 
-  void WriteDictionary(string key, object value)
-  {
-    var index = 0;
-    var dict = (IDictionary) value;
-    var genericArguments = SaveUtil.GetIDictionaryTypes(dict.GetType());
-    var keyType = genericArguments[0];
-    var valueType = genericArguments[1];
-    objects[$"{key}.Count"] = dict.Count;
-
-    foreach (var dictKey in dict.Keys)
+    bool AddValue(Type type, string key, object value)
     {
-      var dictValue = dict[dictKey];
+      if (type == null)
+        throw new Exception("Type cannot be null");
+      if (key == null)
+        throw new Exception("Key cannot be null");
+      if (nullKeys.Contains(key))
+        throw new ArgumentException($"This key is already registered as null: {key}");
+      if (objects.ContainsKey(key))
+        throw new ArgumentException($"This key is already registered as non-null: {key}");
 
-      AddValue(keyType, $"{key}.Keys.{index}", dictKey);
-      AddValue(valueType, $"{key}.Values.{index}", dictValue);
-      index++;
+      if (value == null)
+      {
+        nullKeys.Add(key);
+        return true;
+      }
+
+      if (value is Component comp)
+      {
+        var entity = comp.GetComponent<SaveEntity>();
+        if (entity == null) return false;
+        var refId = entity.GetEntityId();
+        objects[key] = refId;
+        objects[$"{key}.compIndex"] = SaveUtil.GetComponentIndex(entity, type, value);
+        return true;
+      }
+
+      if (type.IsArray) return AddArray(key, value);
+      if (SaveUtil.IsPrimitive(type))
+      {
+        objects[key] = value;
+        return true;
+      }
+
+      // Check to see if we have a serializer for this custom type
+      var customType = type;
+      while (customType != typeof(object) && customType != null)
+      {
+        if (customSerializers.TryGetValue(customType, out var serializer))
+        {
+          var adapter = new Adapter(this, key);
+          if (serializer(adapter, value)) return true;
+        }
+
+        customType = customType.BaseType;
+      }
+
+      if (SaveUtil.IsIListType(type)) return WriteList(type, key, value);
+      if (SaveUtil.IsIDictionaryType(type)) return WriteDictionary(key, value);
+      
+      // Last option: use the default serializer to serialize this object
+      return WriteNonPrimitive(key, value);
     }
-  }
 
-  public void WriteAll()
-  {
-    var output = JsonConvert.SerializeObject(objects);
-    writer.Write(output);
+    bool WriteNonPrimitive(string key, object value)
+    {
+      var type = value.GetType();
+      foreach (var field in SaveUtil.GetFields(type))
+        AddValue(field.FieldType, $"{key}.{field.Name}", field.GetValue(value));
+      return true;
+    }
+
+    bool AddArray(string key, object value)
+    {
+      var array = (Array) value;
+      var elementType = array.GetType().GetElementType();
+      for (var index = 0; index < array.Length; index++)
+        AddValue(elementType, $"{key}.{index}", array.GetValue(index));
+      objects[$"{key}.Length"] = array.Length;
+      return true;
+    }
+
+    bool WriteList(Type listType, string key, object value)
+    {
+      var getMethod = listType.GetMethod("get_Item");
+      if (getMethod == null)
+      {
+        Debug.LogError($"Get method not found for list: given: {value.GetType()} expected: {listType}");
+        return false;
+      }
+
+      var countProperty = listType.GetProperty("Count");
+      if (countProperty == null)
+      {
+        Debug.LogError($"Count property not found for list: given: {value.GetType()} expected: {listType}");
+        return false;
+      }
+
+      var elementType = SaveUtil.GetIListType(listType);
+      var count = (int) countProperty.GetMethod.Invoke(value, new object[] { });
+
+      for (var index = 0; index < count; index++)
+        AddValue(elementType, $"{key}.{index}", getMethod.Invoke(value, new object[] {index}));
+      AddValue(typeof(int), $"{key}.Count", count);
+      return true;
+    }
+
+    bool WriteDictionary(string key, object value)
+    {
+      var index = 0;
+      var dict = (IDictionary) value;
+      var genericArguments = SaveUtil.GetIDictionaryTypes(dict.GetType());
+      var keyType = genericArguments[0];
+      var valueType = genericArguments[1];
+      objects[$"{key}.Count"] = dict.Count;
+
+      foreach (var dictKey in dict.Keys)
+      {
+        var dictValue = dict[dictKey];
+
+        AddValue(keyType, $"{key}.Keys.{index}", dictKey);
+        AddValue(valueType, $"{key}.Values.{index}", dictValue);
+        index++;
+      }
+
+      return true;
+    }
+
+    public void WriteAll()
+    {
+      var output = JsonConvert.SerializeObject(objects);
+      writer.Write(output);
+    }
   }
 }

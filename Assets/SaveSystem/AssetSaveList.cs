@@ -5,7 +5,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 
-namespace SaveSystem
+namespace EntitySaveSystem
 {
   public class AssetSaveList : ScriptableObject
   {
@@ -18,10 +18,18 @@ namespace SaveSystem
 
     [SerializeField] [HideInInspector] List<Entry> entries;
 
-    public GameObject GetAsset(string assetId)
+    public GameObject GetAssetById(string assetId)
     {
       foreach (var entry in entries)
         if (entry.assetId == assetId)
+          return entry.asset;
+      return null;
+    }
+
+    public GameObject GetAssetByName(string assetName)
+    {
+      foreach (var entry in entries)
+        if (entry.asset.name == assetName)
           return entry.asset;
       return null;
     }
@@ -69,7 +77,7 @@ namespace SaveSystem
         selectedAsset = EditorGUILayout.ObjectField("New Asset: ", selectedAsset,
           typeof(GameObject), false) as GameObject;
 
-        var entity = selectedAsset != null ? selectedAsset.GetComponent<EntitySaveController>() : null;
+        var entity = selectedAsset != null ? selectedAsset.GetComponent<SaveEntity>() : null;
 
         if (list.GetAssetId(selectedAsset) != null)
         {
