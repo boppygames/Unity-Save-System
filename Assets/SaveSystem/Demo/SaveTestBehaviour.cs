@@ -19,6 +19,46 @@
 // SOFTWARE.
 
 using System;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEditor.VersionControl;
+using UnityEngine;
+using UnityEngine.Assertions;
 
-[AttributeUsage(AttributeTargets.Field)]
-public class SaveAttribute : Attribute { }
+namespace EntitySaveSystem
+{
+  public class SaveTestBehaviour : MonoBehaviour, IEntityLoadComplete, IBeforeEntitySave
+  {
+    [Serializable]
+    public class MyData
+    {
+      public string s;
+      public int a;
+    }
+
+    // A reference to another test behaviour in the scene
+    [Save] public SaveTestBehaviour otherTest;
+    [Save] public List<MyData> data = new List<MyData>();
+    [Save] public int i;
+    [Save] public string s;
+    [Save] public string nullTest;
+
+    public void OnEntityLoadComplete()
+    {
+      if (data != null)
+      {
+        Debug.Log($"data: entries={data.Count}");
+        foreach(var entry in data)
+          Debug.Log($"\tEntry: {entry.s} {entry.a}");
+      } else Debug.Log("Data was null");
+      
+      Debug.Log($"i: {i} s: {s}");
+      Assert.IsTrue(nullTest == null);
+    }
+
+    public void OnBeforeSave()
+    {
+      nullTest = null;
+    }
+  }
+}

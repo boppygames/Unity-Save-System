@@ -19,6 +19,48 @@
 // SOFTWARE.
 
 using System;
+using System.Collections;
+using System.Collections.Generic;
+using EntitySaveSystem;
+using UnityEngine;
+using UnityEngine.Assertions;
 
-[AttributeUsage(AttributeTargets.Field)]
-public class SaveAttribute : Attribute { }
+public class DemoSaveSystem : SaveSystem
+{
+  public SaveTestBehaviour testPrefab1;
+  public SaveTestBehaviour testPrefab2;
+
+  void Start()
+  {
+    StartCoroutine(SaveTest());
+  }
+
+  IEnumerator SaveTest()
+  {
+    yield return new WaitForSeconds(1);
+    
+    // Instantiate one of each behaviour
+    var instances = new[]
+    {
+      Instantiate(testPrefab1),
+      Instantiate(testPrefab2),
+    };
+
+    // Update refs
+    instances[0].otherTest = instances[1];
+    instances[1].otherTest = instances[0];
+    
+    // Save entities
+    const string fileName = "MyTestFile.dat";
+    Assert.IsTrue(SaveAllEntities(fileName));
+    Debug.Log("Entities saved.");
+    yield break;
+    
+    // Delete existing entities
+    foreach(var entity in instances) Destroy(entity.gameObject);
+    
+    // Load entities
+    LoadAllEntities(fileName);
+    Debug.Log("Entities loaded.");
+  }
+}
