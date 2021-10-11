@@ -88,6 +88,7 @@ namespace EntitySaveSystem
 
     public static int GetComponentIndex(SaveEntity saveEntity, Type componentType, object component)
     {
+      if (component == null) return -1;
       var components = saveEntity.GetComponents(componentType);
       for (var x = 0; x < components.Length; x++)
         if (ReferenceEquals(components[x], component))

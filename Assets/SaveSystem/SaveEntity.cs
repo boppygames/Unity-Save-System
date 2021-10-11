@@ -84,7 +84,7 @@ namespace EntitySaveSystem
     void Start()
     {
       // Assign a new entityId, this may get overwritten later by Load()
-      if (SaveSystem.instance == null) return;
+      if (SaveSystem.instance == null || SaveSystem.instance.IsLoading()) return;
       entityId = Guid.NewGuid().ToString();
       SaveSystem.instance.Register(this);
     }
@@ -104,16 +104,36 @@ namespace EntitySaveSystem
 
     internal string GetAssetName() => serializedName;
 
+    /// <summary>
+    /// This is called by the load system to do some initial setup on the object before its loaded.
+    /// </summary>
+    /// <param name="entityId"></param>
+    /// <param name="assetId"></param>
+    /// <param name="assetName"></param>
+    internal void Preload(string entityId, string assetId, string assetName)
+    {
+      this.entityId = entityId;
+      this.assetId = assetId;
+      serializedName = assetName;
+    }
+
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="writer"></param>
     internal void Save(EntityWriter writer)
     {
       var beforeSave = GetComponents<IBeforeEntitySave>();
       foreach (var invoke in beforeSave)
         invoke?.OnBeforeSave();
 
+      var fields = new List<FieldInfo>();
       foreach (var behaviour in GetComponents<MonoBehaviour>())
       {
         var index = SaveUtil.GetComponentIndex(this, behaviour.GetType(), behaviour);
-        foreach (var saveField in GetFields(behaviour.GetType()))
+        fields.Clear();
+        GetFields(fields, behaviour.GetType());
+        foreach (var saveField in fields)
         {
 #if SAVE_DEBUG
           Debug.Log($"Saving field: {behaviour.GetType()}:{saveField.Name}");
@@ -127,10 +147,13 @@ namespace EntitySaveSystem
     internal void Load(EntityReader reader)
     {
       // Load values for each of our scripts
+      var fields = new List<FieldInfo>();
       foreach (var behaviour in GetComponents<MonoBehaviour>())
       {
         var index = SaveUtil.GetComponentIndex(this, behaviour.GetType(), behaviour);
-        foreach (var loadField in GetFields(behaviour.GetType()))
+        fields.Clear();
+        GetFields(fields, behaviour.GetType());
+        foreach (var loadField in fields)
         {
 #if SAVE_DEBUG
           Debug.Log($"Loading field: {behaviour.GetType()}:{loadField.Name}");
@@ -178,9 +201,10 @@ namespace EntitySaveSystem
         invoke?.OnAllEntitiesLoaded();
     }
 
-    List<FieldInfo> GetFields(List<FieldInfo> fields, Type type)
+    void GetFields(List<FieldInfo> fields, Type type)
     {
-      foreach (var field in type.GetFields(BindingFlags.NonPublic | BindingFlags.Instance))
+      foreach (var field in type.GetFields(BindingFlags.NonPublic 
+                                           | BindingFlags.Instance | BindingFlags.Public))
       {
         // Skip any duplicate fields - this is not supported
         if (fields.Any(a => a.Name == field.Name))
@@ -196,13 +220,7 @@ namespace EntitySaveSystem
 
       // Get private fields within parent classes
       if (type.BaseType != null && type.BaseType != typeof(object))
-      {
-        foreach (var baseField in GetFields(type.BaseType).Where(
-          a => fields.All(b => a.Name != b.Name)))
-          fields.Add(baseField);
-      }
-
-      return fields;
+        GetFields(fields, type.BaseType);
     }
 
 #if UNITY_EDITOR
@@ -224,7 +242,7 @@ namespace EntitySaveSystem
       var assetId = list.GetAssetId(gameObject);
       if (string.IsNullOrEmpty(assetId))
       {
-        Debug.LogWarning($"This save asset is not registered: {name}");
+        // Debug.LogWarning($"This save asset is not registered: {name}");
         if (!string.IsNullOrEmpty(this.assetId))
         {
           this.assetId = "";

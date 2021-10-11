@@ -105,16 +105,6 @@ namespace EntitySaveSystem
         return true;
       }
 
-      if (value is Component comp)
-      {
-        var entity = comp.GetComponent<SaveEntity>();
-        if (entity == null) return false;
-        var refId = entity.GetEntityId();
-        objects[key] = refId;
-        objects[$"{key}.compIndex"] = SaveUtil.GetComponentIndex(entity, type, value);
-        return true;
-      }
-
       if (type.IsArray) return AddArray(key, value);
       if (SaveUtil.IsPrimitive(type))
       {
@@ -210,6 +200,8 @@ namespace EntitySaveSystem
     {
       writer.Write(JsonConvert.SerializeObject(objects));
       writer.Write(JsonConvert.SerializeObject(nullKeys));
+      objects.Clear();
+      nullKeys.Clear();
     }
   }
 }

@@ -41,7 +41,7 @@ namespace EntitySaveSystem
     [Save] public List<MyData> data = new List<MyData>();
     [Save] public int i;
     [Save] public string s;
-    [Save] public string nullTest;
+    [Save] string nullTest;
 
     public void OnEntityLoadComplete()
     {

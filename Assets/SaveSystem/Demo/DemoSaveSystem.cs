@@ -38,7 +38,7 @@ public class DemoSaveSystem : SaveSystem
   IEnumerator SaveTest()
   {
     yield return new WaitForSeconds(1);
-    
+
     // Instantiate one of each behaviour
     var instances = new[]
     {
@@ -49,17 +49,16 @@ public class DemoSaveSystem : SaveSystem
     // Update refs
     instances[0].otherTest = instances[1];
     instances[1].otherTest = instances[0];
-    
     yield return new WaitForSeconds(1);
-    
+
     // Save entities
     const string fileName = "MyTestFile.dat";
     Assert.IsTrue(SaveAllEntities(fileName));
     Debug.Log("Entities saved.");
-    
+
     // Delete existing entities
-    foreach(var entity in instances) Destroy(entity.gameObject);
-    
+    foreach (var entity in instances) Destroy(entity.gameObject);
+
     // Load entities
     LoadAllEntities(fileName);
     Debug.Log("Entities loaded.");

@@ -41,8 +41,9 @@ namespace EntitySaveSystem
 
     public static SaveSystem instance;
 
-    readonly List<SaveEntity> entities = new List<SaveEntity>();
+    readonly Dictionary<string, SaveEntity> entities = new Dictionary<string, SaveEntity>();
     bool isLoading;
+    uint saveSystemMagic = 0xB099001;
 
     protected readonly Dictionary<Type, Func<EntityReader.Adapter, Type, object, object>> customDeserializers =
       new Dictionary<Type, Func<EntityReader.Adapter, Type, object, object>>();
@@ -79,7 +80,7 @@ namespace EntitySaveSystem
         var comp = (Component) value;
         var entity = comp.GetComponent<SaveEntity>();
         if (entity == null) return false;
-        writer.AddValue("ref", typeof(string), entity.GetEntityId());
+        writer.AddValue("refId", typeof(string), entity.GetEntityId());
         writer.AddValue("compIndex", typeof(int),
           SaveUtil.GetComponentIndex(entity, value.GetType(), value));
         return true;
@@ -123,15 +124,22 @@ namespace EntitySaveSystem
     /// <param name="saveEntity">The entity to register with this EntitySaveManager.</param>
     public void Register(SaveEntity saveEntity)
     {
-      if (entities.Contains(saveEntity)) return;
-      entities.Add(saveEntity);
+      if (entities.TryGetValue(saveEntity.GetEntityId(), out var result))
+      {
+        if (saveEntity == result) return;
+        Debug.LogError($"Tried to register different entity with same ID: " +
+                       $"{saveEntity.name}:{saveEntity.GetEntityId()}");
+        return;
+      }
+      
+      entities.Add(saveEntity.GetEntityId(), saveEntity);
     }
 
     /// <summary>
     /// Removes an entity from the registry - this entity will no longer be saved when save is called.
     /// </summary>
     /// <param name="saveEntity">The entity to remove from the registry.</param>
-    public void Unregister(SaveEntity saveEntity) => entities.Remove(saveEntity);
+    public void Unregister(SaveEntity saveEntity) => entities.Remove(saveEntity.GetEntityId());
 
     /// <summary>
     /// Returns a reference to a component on the specified entity with the given type and 
@@ -142,12 +150,9 @@ namespace EntitySaveSystem
     /// <returns></returns>
     public Component GetReference(string entityId, Type type, int compIndex)
     {
-      var entity = entities.FirstOrDefault(a => a.GetEntityId() == entityId);
-      if (entity == null) return null;
-      var comps = entity.GetComponents(type);
-      if (compIndex < comps.Length && compIndex >= 0)
-        return comps[compIndex];
-      return null;
+      if (!entities.TryGetValue(entityId, out var saveEntity)) return null;
+      var comps = saveEntity.GetComponents(type);
+      return compIndex < comps.Length && compIndex >= 0 ? comps[compIndex] : null;
     }
 
     /// <summary>
@@ -155,12 +160,8 @@ namespace EntitySaveSystem
     /// </summary>
     /// <param name="entityId">The entity ID of the entity you want a reference to</param>
     /// <returns></returns>
-    public GameObject GetGOReference(string entityId)
-    {
-      var entity = entities.FirstOrDefault(a => a.GetEntityId() == entityId);
-      if (entity == null) return null;
-      return entity.gameObject;
-    }
+    public GameObject GetGOReference(string entityId) =>
+      !entities.TryGetValue(entityId, out var saveEntity) ? null : saveEntity.gameObject;
 
     public bool SaveAllEntities(string fileName)
     {
@@ -168,27 +169,57 @@ namespace EntitySaveSystem
       using var entityMemoryStream = new MemoryStream(32768);
       using var entityBinaryWriter = new BinaryWriter(entityMemoryStream);
 
+      // Format Notes: This is what a save file looks like
+      //  32bit magic int: for versioning
+      //  32bit int: Entity count
+      //  List of entities, 3 strings each. This is just a header.
+      //  List of all all entity data, starting with a 32bit integer which states the size, then the buffer.
+
       try
       {
         if (File.Exists(fileName)) File.Delete(fileName);
         using var fileStream = new FileStream(fileName, FileMode.OpenOrCreate);
         using var fileBinaryWriter = new BinaryWriter(fileStream);
 
+        // First thing we should do is write the magic
+        fileBinaryWriter.Write(saveSystemMagic);
+        
         // Write the count of entities (important for reading)
         fileBinaryWriter.Write(entities.Count);
         var entityWriter = new EntityWriter(entityBinaryWriter, customSerializers);
 
-        foreach (var entity in entities)
+        // Write a lookup table of entities => prefabs
+        entityMemoryStream.Position = 0;
+        entityMemoryStream.SetLength(0);
+        foreach (var entityEntry in entities)
         {
+          var entityId = entityEntry.Key;
+          var assetId = entityEntry.Value.GetAssetId();
+          if(string.IsNullOrEmpty(entityId)) continue;
+          if(string.IsNullOrEmpty(assetId)) continue;
+          
+          entityBinaryWriter.Write(entityId);
+          entityBinaryWriter.Write(assetId);
+          entityBinaryWriter.Write(entityEntry.Value.GetAssetName());
+        }
+        
+        // Write the lookup table to the file
+        entityMemoryStream.Position = 0;
+        fileStream.Write(entityMemoryStream.GetBuffer(), 0, (int)entityMemoryStream.Length);
+        entityMemoryStream.SetLength(0);
+
+        // Write out the data for each entity
+        foreach (var entityEntry in entities)
+        {
+          var entity = entityEntry.Value;
+          var entityId = entity.GetEntityId();
           if (string.IsNullOrEmpty(entity.GetAssetId()))
           {
-            Debug.LogError($"Asset is not registered: {entity.name}");
+            Debug.LogError($"Entity has no ID, skipping: {entity.name}");
             continue;
           }
-
+          
           entityMemoryStream.Position = 0;
-          entityBinaryWriter.Write(entity.GetAssetId());
-          entityBinaryWriter.Write(entity.GetAssetName());
           try
           {
             // This is very prone to crashing, don't let one bad entity destroy the entire save file.
@@ -204,6 +235,7 @@ namespace EntitySaveSystem
           }
 
           // This was a success, write the buffer to the file
+          fileBinaryWriter.Write(entityId);
           var expectedPosition = fileStream.Position + sizeof(int) + (int) entityMemoryStream.Position;
           fileBinaryWriter.Write((int) entityMemoryStream.Position);
           fileBinaryWriter.Write(entityMemoryStream.GetBuffer(), 0, (int) entityMemoryStream.Position);
@@ -220,25 +252,77 @@ namespace EntitySaveSystem
       return true;
     }
 
-    public void LoadAllEntities(string fileName)
+    public void LoadAllEntities(string fileName, bool destroyExisting = true)
     {
+      if (entities.Count != 0 && entities.Values.Any(a => a != null))
+      {
+        if (destroyExisting)
+        {
+          foreach(var entity in entities) Destroy(entity.Value.gameObject);
+          entities.Clear(); 
+        }else
+        {
+          Debug.LogWarning("There are some entities in our entity table, it is recommended to destroy these"
+           + " before calling LoadAllEntities. This may cause issues.");
+        }
+      }
+
       try
       {
         isLoading = true;
         using var entityMemoryStream = new MemoryStream(32768);
         using var entityBinaryReader = new BinaryReader(entityMemoryStream);
-        var entityReader = new EntityReader(entityBinaryReader);
+        var entityReader = new EntityReader(entityBinaryReader, customDeserializers);
 
         try
         {
           using var fileStream = new FileStream(fileName, FileMode.OpenOrCreate);
           using var fileBinaryReader = new BinaryReader(fileStream);
 
-          var loadedEntities = new List<SaveEntity>();
+          // Read and verify magic
+          var magic = fileBinaryReader.ReadUInt32();
+          if (magic != saveSystemMagic)
+            throw new Exception($"File magic mismatch, got: {magic} expected: {saveSystemMagic}");
+          
+          // Dictionary from entityId => entity
+          var loadedEntities = new Dictionary<string, SaveEntity>();
           var entityCount = fileBinaryReader.ReadInt32();
+          
+          // Read the entity table
           for (var x = 0; x < entityCount; x++)
           {
+            var entityId = fileBinaryReader.ReadString();
+            var assetId = fileBinaryReader.ReadString();
+            var assetName = fileBinaryReader.ReadString();
             
+            // Spawn this entity and set its entityId
+            var assetPrefab = assetList.GetAssetById(assetId);
+            if (assetPrefab == null)
+            {
+              Debug.LogError($"Cannot find prefab for asset {assetName}: {assetId}");
+              continue;
+            }
+
+            var inst = Instantiate(assetPrefab);
+            var saveEntity = inst.GetComponent<SaveEntity>();
+            if (saveEntity == null)
+            {
+              Debug.LogWarning($"Entity no longer has SaveEntity, recovering! {assetName}");
+              saveEntity = inst.AddComponent<SaveEntity>();
+            }
+            
+            // Preload the info for this entity
+            saveEntity.Preload(entityId, assetId, assetName);
+            loadedEntities.Add(entityId, saveEntity);
+            entities.Add(entityId, saveEntity);
+          }
+
+          // Read data for each entity
+          for (var x = 0; x < entityCount; x++)
+          {
+            // Read the entityId
+            var entityId = fileBinaryReader.ReadString();
+            // Read the length of the data buffer
             var bufferSize = fileBinaryReader.ReadInt32();
             entityMemoryStream.SetLength(bufferSize);
             var readBytes = 0;
@@ -262,65 +346,40 @@ namespace EntitySaveSystem
               break;
             }
 
-            // read uuids for the entityId and assetId
-            entityMemoryStream.Position = 0;
-            var assetId = entityBinaryReader.ReadString();
-            var assetName = entityBinaryReader.ReadString();
-            
-            // Try to get the asset or recover the 
-            var asset = assetList.GetAssetById(assetId);
-            if (asset == null)
+            if (!loadedEntities.TryGetValue(entityId, out var saveEntity))
             {
-              Debug.LogError($"Asset is unavailable: {assetName} => {assetId}, we will try to recover.");
-              asset = assetList.GetAssetByName(assetName);
-              if (asset == null)
-              {
-                Debug.LogError($"Recovery failed for asset: {assetName}:{assetId} => no asset available. " +
-                               "Make sure the asset is available in the asset list.");
-                continue;
-              }
-            }
-
-            // Read all values from the buffer for this entity
-            if (!entityReader.ReadAll())
-            {
-              Debug.LogError($"Deserialization failed for entity: {assetName}");
+              Debug.LogError($"Failed to find entity, skipping: {entityId}");
               continue;
             }
             
-            // Instantiate the asset and load its values
-            var inst = Instantiate(asset);
-            var saveController = inst.GetComponent<SaveEntity>();
-            if (saveController == null)
+            entityMemoryStream.Position = 0;
+            // Read all values from the buffer for this entity
+            if (!entityReader.ReadAll())
             {
-              Debug.LogError($"Entity is missing SaveEntity component! {assetName}");
+              Debug.LogError($"Deserialization failed for entity: {saveEntity.GetAssetName()}");
               continue;
             }
 
             try
             {
               // This is also very prone to crashing.
-              saveController.Load(entityReader);
+              saveEntity.Load(entityReader);
             }
             catch (Exception e)
             {
-              Debug.LogError($"Failed to load entity: {assetName}:{assetId}");
+              Debug.LogError($"Failed to load entity: {saveEntity.GetAssetName()}:{saveEntity.GetAssetId()}");
               Debug.LogException(e);
-              Destroy(inst);
-              continue;
+              Destroy(saveEntity.gameObject);
             }
-            
-            loadedEntities.Add(saveController);
           }
 
           // Let all entities do their callbacks
           foreach (var entity in loadedEntities)
-            entity.AllEntitiesLoaded();
+            entity.Value.AllEntitiesLoaded();
         }
         catch (Exception e)
         {
           Debug.LogException(e);
-          return;
         }
       }
       finally

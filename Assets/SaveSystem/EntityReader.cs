@@ -60,11 +60,13 @@ namespace EntitySaveSystem
     HashSet<string> nullKeys;
 
     readonly Dictionary<Type, Func<object, object>> reboxers = new Dictionary<Type, Func<object, object>>();
+    readonly Dictionary<Type, Func<Adapter, Type, object, object>> customDeserializers; 
     readonly List<string> readProperties = new List<string>();
 
-    public EntityReader(BinaryReader reader)
+    public EntityReader(BinaryReader reader, Dictionary<Type, Func<Adapter, Type, object, object>> customDeserializers)
     {
       this.reader = reader;
+      this.customDeserializers = customDeserializers;
 
       reboxers.Add(typeof(bool), a => a);
       reboxers.Add(typeof(char), a => ((string) a)[0]);
@@ -104,21 +106,17 @@ namespace EntitySaveSystem
         return value;
       }
       
-      if (SaveUtil.IsComponentType(type))
+      // Check to see if we have a serializer for this custom type
+      var customType = type;
+      while (customType != typeof(object) && customType != null)
       {
-        if (!objects.TryGetValue(key, out var refValue)) return defaultValue;
-        if (string.IsNullOrEmpty((string) refValue)) return defaultValue;
-        var result = SaveSystem.instance.GetReference((string) refValue, type, 
-          (int) (long) objects[$"{key}.compIndex"]);
-        return result != null ? result : defaultValue;
-      }
+        if (customDeserializers.TryGetValue(customType, out var deserializer))
+        {
+          var adapter = new Adapter(this, key);
+          return deserializer(adapter, type, defaultValue); 
+        }
 
-      if (type == typeof(GameObject))
-      {
-        if (!objects.TryGetValue(key, out var refValue)) return defaultValue;
-        if (string.IsNullOrEmpty((string) refValue)) return defaultValue;
-        var result = SaveSystem.instance.GetGOReference((string) refValue);
-        return result != null ? result : defaultValue;
+        customType = customType.BaseType;
       }
       
       if (SaveUtil.IsIDictionaryType(type))
@@ -152,7 +150,7 @@ namespace EntitySaveSystem
     object ReadArray(Type arrayType, string key, object currentValue)
     {
       if (!objects.ContainsKey($"{key}.Length")) return currentValue;
-      var arrayLength = (int) Read(typeof(int), $"{key}.Length", null);
+      var arrayLength = (int) Read(typeof(int), $"{key}.Length");
       var elementType = arrayType.GetElementType();
       Assert.IsTrue(arrayType.HasElementType && elementType != null);
       var arr = Array.CreateInstance(elementType, arrayLength);

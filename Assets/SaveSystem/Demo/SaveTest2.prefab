@@ -44,7 +44,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a40bb0fc7153d3bd7bebfc413847599c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  data: []
+  otherTest: {fileID: 0}
+  data:
+  - s: An element
+    a: 69
+  i: 45225
+  s: My test string
+  nullTest: 
 --- !u!114 &4878348901633079290
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -57,5 +63,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2406ff04ef03e822bba844d3b6bf8923, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  serializedName: Test2
+  serializedName: SaveTest2
   assetId: 
