@@ -21,7 +21,9 @@ This should work with basically any version of Unity, but the specific version I
 
 ## Getting Started
 
- - Go to the releases page and download the latest Unity package.
+**Important: First install Newtonsoft JSON: https://github.com/jilleJr/Newtonsoft.Json-for-Unity**
+
+ - Then go to the releases page and download the latest Unity package.
  - Import the package into your project, it should be within the SaveSystem directory
  - Open up the demo scene and give it a try.
 
