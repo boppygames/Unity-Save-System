@@ -38,7 +38,7 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 0}
-  m_IndirectSpecularColor: {r: 0.18028334, g: 0.2257134, b: 0.30692226, a: 1}
+  m_IndirectSpecularColor: {r: 0.18028378, g: 0.22571412, b: 0.30692285, a: 1}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -269,7 +269,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   dontDestroyOnLoad: 1
-  assetList: {fileID: 11400000, guid: f92425f4bcc151a4a967f9aeb01f61eb, type: 2}
+  assetList: {fileID: 11400000, guid: 73f66b79ec733f05f8c9dec4a602485b, type: 2}
   testPrefab1: {fileID: 8007870535472733879, guid: d26ed3d3e5750c158be567cfa4b8af97, type: 3}
   testPrefab2: {fileID: 8007870535472733879, guid: b9a2818b5a59691b3877de974e32832e, type: 3}
 --- !u!4 &1119140754

@@ -50,11 +50,12 @@ public class DemoSaveSystem : SaveSystem
     instances[0].otherTest = instances[1];
     instances[1].otherTest = instances[0];
     
+    yield return new WaitForSeconds(1);
+    
     // Save entities
     const string fileName = "MyTestFile.dat";
     Assert.IsTrue(SaveAllEntities(fileName));
     Debug.Log("Entities saved.");
-    yield break;
     
     // Delete existing entities
     foreach(var entity in instances) Destroy(entity.gameObject);

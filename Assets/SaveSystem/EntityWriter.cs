@@ -28,6 +28,7 @@ using System.Linq;
 using System.Reflection;
 using Newtonsoft.Json;
 using UnityEngine;
+using UnityEngine.Assertions;
 
 namespace EntitySaveSystem
 {
@@ -85,6 +86,7 @@ namespace EntitySaveSystem
 
     public bool AddValue(Component comp, int index, FieldInfo fieldInfo, object value) =>
       AddValue(fieldInfo.FieldType, $"{comp.GetType().Name}.{index}.{fieldInfo.Name}", value);
+      
 
     bool AddValue(Type type, string key, object value)
     {
@@ -206,8 +208,8 @@ namespace EntitySaveSystem
 
     public void WriteAll()
     {
-      var output = JsonConvert.SerializeObject(objects);
-      writer.Write(output);
+      writer.Write(JsonConvert.SerializeObject(objects));
+      writer.Write(JsonConvert.SerializeObject(nullKeys));
     }
   }
 }

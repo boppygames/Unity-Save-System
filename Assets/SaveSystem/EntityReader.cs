@@ -82,10 +82,8 @@ namespace EntitySaveSystem
 
     public string[] GetUnreadProperties() => objects.Keys.Except(readProperties).ToArray();
 
-    internal object Read(Component comp, int index, FieldInfo typeInfo, object currentValue)
-    {
-      return Read(typeInfo.FieldType, $"{comp.GetType().Name}.{index}.{typeInfo.Name}");
-    }
+    internal object Read(Component comp, int index, FieldInfo typeInfo, object currentValue) =>
+      Read(typeInfo.FieldType, $"{comp.GetType().Name}.{index}.{typeInfo.Name}", currentValue);
 
     object Read(Type type, string key, object defaultValue = null)
     {

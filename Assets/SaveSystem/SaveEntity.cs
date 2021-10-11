@@ -178,9 +178,8 @@ namespace EntitySaveSystem
         invoke?.OnAllEntitiesLoaded();
     }
 
-    List<FieldInfo> GetFields(Type type)
+    List<FieldInfo> GetFields(List<FieldInfo> fields, Type type)
     {
-      var fields = new List<FieldInfo>();
       foreach (var field in type.GetFields(BindingFlags.NonPublic | BindingFlags.Instance))
       {
         // Skip any duplicate fields - this is not supported

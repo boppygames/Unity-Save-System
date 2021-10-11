@@ -228,7 +228,7 @@ namespace EntitySaveSystem
         using var entityMemoryStream = new MemoryStream(32768);
         using var entityBinaryReader = new BinaryReader(entityMemoryStream);
         var entityReader = new EntityReader(entityBinaryReader);
-        
+
         try
         {
           using var fileStream = new FileStream(fileName, FileMode.OpenOrCreate);
@@ -240,6 +240,7 @@ namespace EntitySaveSystem
           {
             
             var bufferSize = fileBinaryReader.ReadInt32();
+            entityMemoryStream.SetLength(bufferSize);
             var readBytes = 0;
 
             try
