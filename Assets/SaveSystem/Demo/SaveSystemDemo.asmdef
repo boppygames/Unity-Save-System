@@ -1,0 +1,16 @@
+{
+    "name": "SaveSystemDemo",
+    "rootNamespace": "",
+    "references": [
+        "GUID:da09250b158d208338276ced0783b2bf"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
