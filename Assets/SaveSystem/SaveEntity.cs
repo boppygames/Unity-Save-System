@@ -22,19 +22,15 @@
 #define SAVE_DEBUG
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Net;
 using System.Reflection;
-using System.Runtime.InteropServices.WindowsRuntime;
 using UnityEditor;
 using UnityEngine;
 
 namespace EntitySaveSystem
 {
-  public interface ISavePropertyMissing
+  public interface IEntityMissingField
   {
     /// <summary>
     /// This callback is invoked when a field is available in a save file but the behaviour is now missing that
@@ -42,7 +38,7 @@ namespace EntitySaveSystem
     /// </summary>
     /// <param name="name">Name of the field</param>
     /// <param name="reader">A reader that can be used to load the property.</param>
-    void OnMissingProperty(string name, EntityReader reader);
+    void OnEntityMissingField(string name, EntityReader reader);
   }
 
   public interface IEntityLoadComplete
@@ -54,12 +50,12 @@ namespace EntitySaveSystem
     void OnEntityLoadComplete();
   }
 
-  public interface ILoadComplete
+  public interface ISceneLoadComplete
   {
     /// <summary>
     /// This callback is invoked when all entities in the save file have been loaded.
     /// </summary>
-    void OnAllEntitiesLoaded();
+    void OnSceneLoadComplete();
   }
 
   public interface IBeforeEntitySave
@@ -67,7 +63,7 @@ namespace EntitySaveSystem
     /// <summary>
     /// This callback is invoked just before this entity is saved to disk.
     /// </summary>
-    void OnBeforeSave();
+    void OnBeforeEntitySave();
   }
 
   [DisallowMultipleComponent]
@@ -124,7 +120,7 @@ namespace EntitySaveSystem
     {
       var beforeSave = GetComponents<IBeforeEntitySave>();
       foreach (var invoke in beforeSave)
-        invoke?.OnBeforeSave();
+        invoke?.OnBeforeEntitySave();
 
       var fields = new List<FieldInfo>();
       foreach (var behaviour in GetComponents<MonoBehaviour>())
@@ -166,7 +162,7 @@ namespace EntitySaveSystem
       var unread = reader.GetUnreadProperties();
       foreach (var behaviour in GetComponents<MonoBehaviour>())
       {
-        var missingInterface = behaviour.GetComponent<ISavePropertyMissing>();
+        var missingInterface = behaviour.GetComponent<IEntityMissingField>();
         var index = SaveUtil.GetComponentIndex(this, behaviour.GetType(), behaviour);
         foreach (var unreadProperty in unread)
         {
@@ -180,7 +176,7 @@ namespace EntitySaveSystem
 #endif
 
           if (behaviour.GetType().Name != typeNameString || index != unreadIndex) continue;
-          missingInterface?.OnMissingProperty(split[2], reader);
+          missingInterface?.OnEntityMissingField(unreadProperty.Substring(split[0].Length + 1 + split[1].Length + 1), reader);
         }
       }
 
@@ -195,9 +191,9 @@ namespace EntitySaveSystem
     /// </summary>
     public void AllEntitiesLoaded()
     {
-      var afterLoad = GetComponents<ILoadComplete>();
+      var afterLoad = GetComponents<ISceneLoadComplete>();
       foreach (var invoke in afterLoad)
-        invoke?.OnAllEntitiesLoaded();
+        invoke?.OnSceneLoadComplete();
     }
 
     void GetFields(List<FieldInfo> fields, Type type)

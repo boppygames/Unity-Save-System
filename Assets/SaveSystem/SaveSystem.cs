@@ -129,7 +129,7 @@ namespace EntitySaveSystem
                        $"{saveEntity.name}:{saveEntity.GetEntityId()}");
         return;
       }
-      
+
       entities.Add(saveEntity.GetEntityId(), saveEntity);
     }
 
@@ -181,7 +181,7 @@ namespace EntitySaveSystem
 
         // First thing we should do is write the magic
         fileBinaryWriter.Write(saveSystemMagic);
-        
+
         // Write the count of entities (important for reading)
         fileBinaryWriter.Write(entities.Count);
         var entityWriter = new EntityWriter(entityBinaryWriter, customSerializers);
@@ -193,17 +193,17 @@ namespace EntitySaveSystem
         {
           var entityId = entityEntry.Key;
           var assetId = entityEntry.Value.GetAssetId();
-          if(string.IsNullOrEmpty(entityId)) continue;
-          if(string.IsNullOrEmpty(assetId)) continue;
-          
+          if (string.IsNullOrEmpty(entityId)) continue;
+          if (string.IsNullOrEmpty(assetId)) continue;
+
           entityBinaryWriter.Write(entityId);
           entityBinaryWriter.Write(assetId);
           entityBinaryWriter.Write(entityEntry.Value.GetAssetName());
         }
-        
+
         // Write the lookup table to the file
         entityMemoryStream.Position = 0;
-        fileStream.Write(entityMemoryStream.GetBuffer(), 0, (int)entityMemoryStream.Length);
+        fileStream.Write(entityMemoryStream.GetBuffer(), 0, (int) entityMemoryStream.Length);
         entityMemoryStream.SetLength(0);
 
         // Write out the data for each entity
@@ -216,7 +216,7 @@ namespace EntitySaveSystem
             Debug.LogError($"Entity has no ID, skipping: {entity.name}");
             continue;
           }
-          
+
           entityMemoryStream.Position = 0;
           try
           {
@@ -250,18 +250,27 @@ namespace EntitySaveSystem
       return true;
     }
 
+    /// <summary>
+    /// Loads all entities in the specified save file.
+    /// </summary>
+    /// <param name="fileName">The save file to load</param>
+    /// <param name="compressed">Whether or not the save file is compressed and needs to be decompressed.</param>
+    /// <param name="destroyExisting">Whether or not to destroy existing scene objects before loading. If you load a file with entities that already exist in the scene, you may have unexpected behaviour</param>
+    /// <exception cref="Exception"></exception>
+    /// <exception cref="EndOfStreamException"></exception>
     public void LoadAllEntities(string fileName, bool destroyExisting = true)
     {
       if (entities.Count != 0 && entities.Values.Any(a => a != null))
       {
         if (destroyExisting)
         {
-          foreach(var entity in entities) Destroy(entity.Value.gameObject);
-          entities.Clear(); 
-        }else
+          foreach (var entity in entities) Destroy(entity.Value.gameObject);
+          entities.Clear();
+        }
+        else
         {
           Debug.LogWarning("There are some entities in our entity table, it is recommended to destroy these"
-           + " before calling LoadAllEntities. This may cause issues.");
+                           + " before calling LoadAllEntities. This may cause issues.");
         }
       }
 
@@ -281,18 +290,18 @@ namespace EntitySaveSystem
           var magic = fileBinaryReader.ReadUInt32();
           if (magic != saveSystemMagic)
             throw new Exception($"File magic mismatch, got: {magic} expected: {saveSystemMagic}");
-          
+
           // Dictionary from entityId => entity
           var loadedEntities = new Dictionary<string, SaveEntity>();
           var entityCount = fileBinaryReader.ReadInt32();
-          
+
           // Read the entity table
           for (var x = 0; x < entityCount; x++)
           {
             var entityId = fileBinaryReader.ReadString();
             var assetId = fileBinaryReader.ReadString();
             var assetName = fileBinaryReader.ReadString();
-            
+
             // Spawn this entity and set its entityId
             var assetPrefab = assetList.GetAssetById(assetId);
             if (assetPrefab == null)
@@ -308,7 +317,7 @@ namespace EntitySaveSystem
               Debug.LogWarning($"Entity no longer has SaveEntity, recovering! {assetName}");
               saveEntity = inst.AddComponent<SaveEntity>();
             }
-            
+
             // Preload the info for this entity
             saveEntity.Preload(entityId, assetId, assetName);
             loadedEntities.Add(entityId, saveEntity);
@@ -329,7 +338,7 @@ namespace EntitySaveSystem
             {
               while (readBytes != bufferSize)
               {
-                var thisRead = fileBinaryReader.Read(entityMemoryStream.GetBuffer(), readBytes, 
+                var thisRead = fileBinaryReader.Read(entityMemoryStream.GetBuffer(), readBytes,
                   bufferSize - readBytes);
                 readBytes += thisRead;
                 // Hit EOF
@@ -349,7 +358,7 @@ namespace EntitySaveSystem
               Debug.LogError($"Failed to find entity, skipping: {entityId}");
               continue;
             }
-            
+
             entityMemoryStream.Position = 0;
             // Read all values from the buffer for this entity
             if (!entityReader.ReadAll())

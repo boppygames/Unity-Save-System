@@ -55,7 +55,7 @@ namespace EntitySaveSystem
       Assert.IsTrue(nullTest == null);
     }
 
-    public void OnBeforeSave()
+    public void OnBeforeEntitySave()
     {
       nullTest = null;
     }

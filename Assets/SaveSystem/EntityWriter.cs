@@ -19,16 +19,12 @@
 // SOFTWARE.
 
 using System;
-using System.CodeDom;
 using System.Collections;
 using System.Collections.Generic;
-using System.Data.Common;
 using System.IO;
-using System.Linq;
 using System.Reflection;
 using Newtonsoft.Json;
 using UnityEngine;
-using UnityEngine.Assertions;
 
 namespace EntitySaveSystem
 {
